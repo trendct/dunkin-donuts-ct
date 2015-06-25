@@ -105,6 +105,8 @@ datatable(ct)
 
 ### Expanding scope to New England
 
+I had to do this part of the analysis outside of R. I used QGIS and did a spatial join to count the number of stores within town boundaries. I joined that with population counts and brought the spreadsheet into R below.
+
 ```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
 dc <- read.csv("DunkinCount.csv", stringsAsFactors=FALSE)
 dc_table <- dc[c("Towns", "State", "Population", "Dunkin.Donuts","Per.1.000.residents")]

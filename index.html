@@ -219,6 +219,7 @@ datatable(ct)</code></pre>
 </div>
 <div id="expanding-scope-to-new-england" class="section level3">
 <h3>Expanding scope to New England</h3>
+<p>I had to do this part of the analysis outside of R. I used QGIS and did a spatial join to count the number of stores within town boundaries. I joined that with population counts and brought the spreadsheet into R below.</p>
 <pre class="r"><code>dc &lt;- read.csv(&quot;DunkinCount.csv&quot;, stringsAsFactors=FALSE)
 dc_table &lt;- dc[c(&quot;Towns&quot;, &quot;State&quot;, &quot;Population&quot;, &quot;Dunkin.Donuts&quot;,&quot;Per.1.000.residents&quot;)]
 colnames(dc_table) &lt;- c(&quot;Town&quot;, &quot;State&quot;,&quot;Population&quot;,&quot;Dunkins&quot;, &quot;Per Capita&quot;)
