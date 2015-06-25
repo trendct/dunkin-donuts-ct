@@ -1,0 +1,189 @@
+---
+title: "Analysis of Dunkin' Donuts in Connecticut and New England"
+author: "Andrew Ba Tran"
+date: "June 24, 2015"
+output: html_document
+---
+
+This analysis accompanies the TrendCT.org story: [Dunkin’ Donuts owns name rights to Hartford ball park, already owns New England](http://trendct.org/2015/06/15/dunkin-donuts-owns-rights-to-hartford-stadium-already-owns-new-england/)
+
+Here’s the data we [pulled and cleaned](http://www.LINKGOESHERE.com) from Dunkin' Donuts.
+
+***
+
+#### Let's start out by mapping out all the Dunkin' Donuts locations
+
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+library(leaflet)
+dunk <- read.csv("dunkindonuts.csv", stringsAsFactors=FALSE)
+leaflet(dunk) %>% addTiles('http://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', attribution='Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>') %>% 
+  setView(-98.557087, 39.810502, zoom = 4) %>% 
+  addCircles(~lng, ~lat, weight = 1, radius=3, 
+                 color="#ffa500", stroke = FALSE, fillOpacity = 0.8)
+
+
+```
+
+***
+
+#### Let's look specifically at Connecticut
+
+***
+
+
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+library(dplyr)
+library(ctnamecleaner)
+library(stringr)
+ct <- dunk %>% filter(state=="CT") %>% count(city)
+
+ctnamecleaner(city, ct)
+
+ct <- data.frame(tapply(CTDATA$n, CTDATA$real.town.name, sum))
+ct$town <- rownames(ct)
+colnames(ct) <- c("Dunkins", "id")
+
+ctpopulator(id, ct)
+
+ct <- CTPOPULATED
+ct$percapita <- (ct$Dunkins/ct$pop2013)*10000
+ct$percapita <- round(ct$percapita, digits=2)
+ct$id <- str_to_title(ct$id)
+
+require(gtools)
+require(ggplot2)
+require(rgdal)
+require(scales)
+require(ggmap)
+require(Cairo)
+require(gpclib)
+require(maptools)
+require(reshape)
+gpclibPermit()
+gpclibPermitStatus()
+
+towntracts <- readOGR(dsn="townsmap", layer="towns")
+towntracts <- fortify(towntracts, region="NAME10")
+
+Dunk_Data <- left_join(towntracts, ct)
+
+Dunk_Data$Dunkins <- as.numeric(Dunk_Data$Dunkins)
+Dunk_Data$percapita <- as.numeric(Dunk_Data$percapita)
+
+dd <- ggplot() +
+  geom_polygon(data = Dunk_Data, aes(x=long, y=lat, group=group, 
+                                         fill=percapita), color = "black", size=0.2) +
+  coord_map() +
+  scale_fill_distiller(type="seq", palette = "Reds", breaks=pretty_breaks(n=5)) +
+  theme_nothing(legend=TRUE) +
+  labs(title="Dunkin' Donuts stores per 10,000 residents", fill="")
+dd
+
+dd_all <- ggplot() +
+  geom_polygon(data = Dunk_Data, aes(x=long, y=lat, group=group, 
+                                         fill=Dunkins), color = "black", size=0.2) +
+  coord_map() +
+  scale_fill_distiller(type="seq", palette = "Reds", breaks=pretty_breaks(n=5)) +
+  theme_nothing(legend=TRUE) +
+  labs(title="Total Dunkin' Donuts by town", fill="")
+dd_all
+
+```
+
+***
+
+####Analysis for Connecticut 
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+library(DT)
+ct <- ct[c("id", "pop2013", "Dunkins", "percapita")]
+colnames(ct) <- c("Town", "Population", "Dunkins", "Per Capita")
+datatable(ct)
+
+```
+
+***
+
+### Expanding scope to New England
+
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+dc <- read.csv("DunkinCount.csv", stringsAsFactors=FALSE)
+dc_table <- dc[c("Towns", "State", "Population", "Dunkin.Donuts","Per.1.000.residents")]
+colnames(dc_table) <- c("Town", "State","Population","Dunkins", "Per Capita")
+datatable(dc_table)
+```
+
+***
+
+###Is there a correlation between a town's population and number of Dunkin' Donuts?
+
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+
+ddne <- ggplot(data=dc, aes(x=Dunkin.Donuts, y=Population)) +
+  geom_point(aes(text=paste(Towns, State, sep=", ")))+ 
+               geom_smooth(method=lm, formula = y ~ poly(x, 2), size=1) +
+               theme_minimal() +
+               ggtitle("Dunkin' Donuts versus town population in New England") +
+               labs(y="Population", x="Dunkin' Donuts")
+ddne
+
+```
+
+That outlier in the top right is Boston.
+
+Will have to readjust by taking out the outlier and trying a polynomial model.
+
+
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+
+
+dcnotboston <- filter(dc, Towns!="Boston")
+
+p <- ggplot(data=dcnotboston, aes(x=Dunkin.Donuts, y=Population)) +
+  geom_point(aes(text=paste(Towns, State, sep=", ")))+ 
+  geom_smooth(method=lm, formula = y ~ poly(x, 2), size=1) +
+  theme_minimal() +
+  theme(text=element_text(family="Lato", size=14)) +
+  ggtitle("Dunkin' Donuts versus town population in New England") +
+  labs(y="Population", x="Dunkin' Donuts")
+p
+```
+
+****
+
+### Let's apply this model to predict how many Dunkin' Donuts a town should have.
+```{r fig.width=7, fig.height=6, out.width=900,out.height=600}
+
+#Determining which factor of polynomial is most ideal
+dcm_lm1 <- lm(dcnotboston$Dunkin.Donuts ~ poly(dcnotboston$Population, 1))
+summary(dcm_lm1)
+
+dcm_lm2 <- lm(dcnotboston$Dunkin.Donuts ~ poly(dcnotboston$Population, 2))
+summary(dcm_lm2)
+
+dcm_lm3 <- lm(dcnotboston$Dunkin.Donuts ~ poly(dcnotboston$Population, 3))
+summary(dcm_lm3)
+
+#OK, looks like the ideal is 2
+
+new <- data.frame(Population = dcnotboston$Population)
+
+ddpredict <- predict(dcm_lm2, newdata = new, interval="confidence")
+
+predicted <- cbind(dcnotboston, ddpredict)
+predicted <- predicted %>% filter(State=="CT")
+predicted$rounded <- round(predicted$upr, digits=0)
+predicted$prediction <-predicted$rounded - predicted$Dunkin.Donuts
+predicted <- predicted[order(predicted$prediction),]
+
+total <- predicted[c("Towns", "Dunkin.Donuts", "Population", "fit", "lwr", "upr", "rounded", "prediction")]
+
+total$fit <- round(total$fit, digits=2)
+total$lwr <- round(total$lwr, digits=2)
+total$upr <- round(total$upr, digits=2)
+
+datatable(total)
+
+```
+
+
+
